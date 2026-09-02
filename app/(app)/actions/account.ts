@@ -30,6 +30,9 @@ export type SaveAccountPayload = {
   starting_balance: number;
   color?: string | null;
   is_default?: boolean;
+  prop_firm_name?: string | null;
+  daily_loss_limit?: number | null;
+  max_drawdown_limit?: number | null;
 };
 
 export async function saveAccount(
@@ -50,18 +53,23 @@ export async function saveAccount(
       .neq("id", payload.id ?? "00000000-0000-0000-0000-000000000000");
   }
 
+  const shared = {
+    name: payload.name,
+    broker: payload.broker ?? null,
+    account_type: payload.account_type,
+    currency: payload.currency,
+    starting_balance: payload.starting_balance,
+    color: payload.color ?? null,
+    is_default: payload.is_default ?? false,
+    prop_firm_name: payload.prop_firm_name ?? null,
+    daily_loss_limit: payload.daily_loss_limit ?? null,
+    max_drawdown_limit: payload.max_drawdown_limit ?? null,
+  };
+
   if (payload.id) {
     const { error } = await supabase
       .from("trading_accounts")
-      .update({
-        name: payload.name,
-        broker: payload.broker ?? null,
-        account_type: payload.account_type,
-        currency: payload.currency,
-        starting_balance: payload.starting_balance,
-        color: payload.color ?? null,
-        is_default: payload.is_default ?? false,
-      })
+      .update(shared)
       .eq("id", payload.id)
       .eq("user_id", user.id);
     if (error) return { ok: false, error: error.message };
@@ -71,16 +79,7 @@ export async function saveAccount(
 
   const { data, error } = await supabase
     .from("trading_accounts")
-    .insert({
-      user_id: user.id,
-      name: payload.name,
-      broker: payload.broker ?? null,
-      account_type: payload.account_type,
-      currency: payload.currency,
-      starting_balance: payload.starting_balance,
-      color: payload.color ?? null,
-      is_default: payload.is_default ?? false,
-    })
+    .insert({ user_id: user.id, ...shared })
     .select("id")
     .single();
   if (error) return { ok: false, error: error.message };

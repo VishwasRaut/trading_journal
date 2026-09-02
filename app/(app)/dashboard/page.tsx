@@ -6,6 +6,8 @@ import {
   Scale,
   Target,
   Wallet,
+  Activity,
+  TrendingUp,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTrades } from "@/lib/trades";
@@ -18,12 +20,19 @@ import {
   equityCurveRich,
   groupTradesByMonth,
   closedTrades,
+  profitFactor,
+  expectancyR,
+  sharpeRatio,
+  currentStreak,
+  todaysPnl,
+  propFirmStatus,
 } from "@/lib/analytics";
 import { formatSigned, formatPercent, formatTradeDate } from "@/lib/format";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { TraderQuotes } from "@/components/dashboard/trader-quotes";
 import { EquityCurvePro } from "@/components/charts/equity-curve-pro";
 import { PageHeader } from "@/components/layout/page-header";
+import { PropFirmBanner } from "@/components/dashboard/prop-firm-banner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -56,9 +65,23 @@ export default async function DashboardPage() {
   const total = totalPnl(trades);
   const win = winRate(trades);
   const rr = avgRiskReward(trades);
+  const pf = profitFactor(trades);
+  const expR = expectancyR(trades);
+  const sharpe = sharpeRatio(trades);
+  const streak = currentStreak(trades);
   const monthly = groupTradesByMonth(trades);
   const thisMonth = monthly.at(-1);
+  const today = todaysPnl(trades);
   const equity = equityCurveRich(trades, startingCapital);
+
+  const propStatus = activeAccount
+    ? propFirmStatus({
+        trades,
+        startingBalance: activeAccount.starting_balance,
+        dailyLossLimit: activeAccount.daily_loss_limit,
+        maxDrawdownLimit: activeAccount.max_drawdown_limit,
+      })
+    : null;
 
   const recent = trades.slice(0, 5);
 
@@ -74,6 +97,18 @@ export default async function DashboardPage() {
       />
 
       <TraderQuotes />
+
+      {propStatus &&
+        (propStatus.dailyUsedPct > 0 || propStatus.drawdownUsedPct > 0) && (
+          <PropFirmBanner
+            dailyUsedPct={propStatus.dailyUsedPct}
+            drawdownUsedPct={propStatus.drawdownUsedPct}
+            dailyBreached={propStatus.dailyBreached}
+            drawdownBreached={propStatus.drawdownBreached}
+            todayPnl={today}
+            currency={currency}
+          />
+        )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KpiCard
@@ -113,6 +148,41 @@ export default async function DashboardPage() {
           tone={(thisMonth?.pnl ?? 0) >= 0 ? "profit" : "loss"}
           icon={<Percent className="size-5" />}
           hint={thisMonth?.label ?? "no trades this month"}
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          label="Expectancy (R)"
+          value={expR}
+          format={{ kind: "number", digits: 2 }}
+          tone={expR > 0 ? "profit" : expR < 0 ? "loss" : "primary"}
+          icon={<Target className="size-5" />}
+          hint="per trade in R units"
+        />
+        <KpiCard
+          label="Profit factor"
+          value={pf === Infinity ? 99 : pf}
+          format={{ kind: "number", digits: 2 }}
+          tone={pf >= 1.5 ? "profit" : pf < 1 ? "loss" : "primary"}
+          icon={<TrendingUp className="size-5" />}
+          hint=">1.5 is a healthy edge"
+        />
+        <KpiCard
+          label="Sharpe"
+          value={sharpe}
+          format={{ kind: "number", digits: 2 }}
+          tone={sharpe > 1 ? "profit" : sharpe < 0 ? "loss" : "primary"}
+          icon={<Activity className="size-5" />}
+          hint="risk-adjusted return"
+        />
+        <KpiCard
+          label={streak >= 0 ? "Winning streak" : "Losing streak"}
+          value={Math.abs(streak)}
+          format={{ kind: "number", digits: 0 }}
+          tone={streak >= 0 ? "profit" : "loss"}
+          icon={<Activity className="size-5" />}
+          hint="trades in a row"
         />
       </div>
 

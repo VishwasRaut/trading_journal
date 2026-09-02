@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { formatSigned, formatTradeDate } from "@/lib/format";
+import { rMultiple } from "@/lib/analytics";
 import type { TradeWithRelations } from "@/lib/trades";
 import type { Market } from "@/types/database";
 
@@ -42,7 +43,9 @@ export function TradesTable({
   currency: string;
 }) {
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<"all" | "open" | "closed">("all");
+  const [status, setStatus] = useState<
+    "all" | "planned" | "open" | "closed"
+  >("all");
   const [market, setMarket] = useState<"all" | Market>("all");
 
   const filtered = useMemo(() => {
@@ -80,6 +83,7 @@ export function TradesTable({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All status</SelectItem>
+            <SelectItem value="planned">Planned</SelectItem>
             <SelectItem value="open">Open</SelectItem>
             <SelectItem value="closed">Closed</SelectItem>
           </SelectContent>
@@ -118,6 +122,8 @@ export function TradesTable({
                 <TableHead>Entry</TableHead>
                 <TableHead>Exit</TableHead>
                 <TableHead>P&L</TableHead>
+                <TableHead>R</TableHead>
+                <TableHead>Grade</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Date</TableHead>
               </TableRow>
@@ -171,8 +177,48 @@ export function TradesTable({
                     )}
                   </TableCell>
                   <TableCell>
+                    {(() => {
+                      const r = rMultiple(t);
+                      if (r === null)
+                        return (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        );
+                      return (
+                        <span
+                          className={`num text-xs font-medium tabular-nums ${
+                            r > 0
+                              ? "text-profit"
+                              : r < 0
+                                ? "text-loss"
+                                : "text-muted-foreground"
+                          }`}
+                        >
+                          {r > 0 ? "+" : ""}
+                          {r.toFixed(2)}R
+                        </span>
+                      );
+                    })()}
+                  </TableCell>
+                  <TableCell>
+                    {t.execution_grade ? (
+                      <span
+                        className={`grid size-6 place-items-center rounded-md font-mono text-[11px] font-semibold ${
+                          t.execution_grade === "A" || t.execution_grade === "B"
+                            ? "bg-profit/15 text-profit"
+                            : t.execution_grade === "F"
+                              ? "bg-loss/15 text-loss"
+                              : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {t.execution_grade}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <Badge
-                      variant={t.status === "open" ? "outline" : "default"}
+                      variant={t.status === "closed" ? "default" : "outline"}
                       className="capitalize"
                     >
                       {t.status}

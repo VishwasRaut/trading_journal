@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   Database,
   TradeImageRow,
+  TradeMistakeRow,
   TradeRow,
   TradeTagRow,
 } from "@/types/database";
@@ -9,7 +10,11 @@ import type {
 export type TradeWithRelations = TradeRow & {
   trade_tags: Pick<TradeTagRow, "id" | "tag">[];
   trade_images: TradeImageRow[];
+  trade_mistakes: Pick<TradeMistakeRow, "id" | "code">[];
 };
+
+const TRADE_SELECT =
+  "*, trade_tags(id, tag), trade_images(*), trade_mistakes(id, code)";
 
 export async function fetchTrades(
   supabase: SupabaseClient<Database>,
@@ -18,7 +23,7 @@ export async function fetchTrades(
 ): Promise<TradeWithRelations[]> {
   let q = supabase
     .from("trades")
-    .select("*, trade_tags(id, tag), trade_images(*)")
+    .select(TRADE_SELECT)
     .eq("user_id", userId);
   if (accountId) q = q.eq("account_id", accountId);
   const { data, error } = await q.order("entry_at", { ascending: false });
@@ -34,7 +39,7 @@ export async function fetchTrade(
 ): Promise<TradeWithRelations | null> {
   const { data, error } = await supabase
     .from("trades")
-    .select("*, trade_tags(id, tag), trade_images(*)")
+    .select(TRADE_SELECT)
     .eq("user_id", userId)
     .eq("id", tradeId)
     .maybeSingle();

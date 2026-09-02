@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAccounts, ALL_ACCOUNTS } from "@/lib/accounts";
 import { readCurrentAccountId } from "@/lib/accounts-server";
+import { fetchPlaybooks } from "@/lib/playbooks";
 import { TradeForm } from "@/components/trades/trade-form";
 import { PageHeader } from "@/components/layout/page-header";
 
@@ -14,7 +15,10 @@ export default async function NewTradePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const accounts = await fetchAccounts(supabase, user.id);
+  const [accounts, playbooks] = await Promise.all([
+    fetchAccounts(supabase, user.id),
+    fetchPlaybooks(supabase, user.id),
+  ]);
   const activeAccounts = accounts.filter((a) => !a.is_archived);
   const currentAccountId = await readCurrentAccountId();
   const defaultAccountId =
@@ -34,6 +38,7 @@ export default async function NewTradePage() {
         userId={user.id}
         accounts={activeAccounts}
         defaultAccountId={defaultAccountId}
+        playbooks={playbooks}
       />
     </div>
   );

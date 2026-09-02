@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTrade } from "@/lib/trades";
 import { fetchAccounts } from "@/lib/accounts";
+import { fetchPlaybooks } from "@/lib/playbooks";
 import { TradeForm } from "@/components/trades/trade-form";
 import { PageHeader } from "@/components/layout/page-header";
 
@@ -19,9 +20,10 @@ export default async function EditTradePage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [trade, accounts] = await Promise.all([
+  const [trade, accounts, playbooks] = await Promise.all([
     fetchTrade(supabase, user.id, id),
     fetchAccounts(supabase, user.id),
+    fetchPlaybooks(supabase, user.id, true),
   ]);
   if (!trade) notFound();
 
@@ -39,6 +41,7 @@ export default async function EditTradePage({
         initial={trade}
         accounts={activeAccounts}
         defaultAccountId={defaultAccountId}
+        playbooks={playbooks}
       />
     </div>
   );

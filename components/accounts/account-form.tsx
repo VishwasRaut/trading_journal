@@ -71,6 +71,15 @@ export function AccountForm({
   const [isDefault, setIsDefault] = useState(
     initial?.is_default ?? asFirst ?? false,
   );
+  const [propFirmName, setPropFirmName] = useState(
+    initial?.prop_firm_name ?? "",
+  );
+  const [dailyLossLimit, setDailyLossLimit] = useState<number | "">(
+    initial?.daily_loss_limit ?? "",
+  );
+  const [maxDdLimit, setMaxDdLimit] = useState<number | "">(
+    initial?.max_drawdown_limit ?? "",
+  );
   const [pending, startTransition] = useTransition();
 
   function submit() {
@@ -88,6 +97,9 @@ export function AccountForm({
         starting_balance: Number(startingBalance) || 0,
         color,
         is_default: isDefault,
+        prop_firm_name: propFirmName.trim() || null,
+        daily_loss_limit: dailyLossLimit === "" ? null : Number(dailyLossLimit),
+        max_drawdown_limit: maxDdLimit === "" ? null : Number(maxDdLimit),
       });
       if (!res.ok) {
         toast.error(res.error);
@@ -206,6 +218,61 @@ export function AccountForm({
           New trades will be logged here unless you switch.
         </span>
       </label>
+
+      <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/10 p-3">
+        <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Risk guardrails (prop firm mode)
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="prop-firm">Prop firm (optional)</Label>
+          <Input
+            id="prop-firm"
+            placeholder="e.g. FTMO, Topstep, MyForexFunds"
+            value={propFirmName}
+            onChange={(e) => setPropFirmName(e.target.value)}
+          />
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="daily-loss">
+              Daily loss limit ({currency})
+            </Label>
+            <Input
+              id="daily-loss"
+              type="number"
+              step="any"
+              placeholder="e.g. 500"
+              value={dailyLossLimit}
+              onChange={(e) =>
+                setDailyLossLimit(
+                  e.target.value === "" ? "" : Number(e.target.value),
+                )
+              }
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="max-dd">
+              Max drawdown ({currency})
+            </Label>
+            <Input
+              id="max-dd"
+              type="number"
+              step="any"
+              placeholder="e.g. 1000"
+              value={maxDdLimit}
+              onChange={(e) =>
+                setMaxDdLimit(
+                  e.target.value === "" ? "" : Number(e.target.value),
+                )
+              }
+            />
+          </div>
+        </div>
+        <div className="text-[11px] text-muted-foreground">
+          The dashboard warns you as you approach these. Leave blank to
+          disable.
+        </div>
+      </div>
 
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="ghost" onClick={onDone}>

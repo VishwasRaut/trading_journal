@@ -48,38 +48,56 @@ export async function importTrades(
     (existing ?? []).map((r) => r.external_id).filter(Boolean) as string[],
   );
 
-  const rows = trades.map((t) => ({
-    user_id: user.id,
-    account_id: accountId,
-    external_id: t.externalId,
-    source: "mt5_import" as const,
-    symbol: t.symbol,
-    market: t.market,
-    direction: t.direction,
-    entry_price: t.entryPrice,
-    exit_price: t.exitPrice,
-    quantity: t.volume,
-    lot_size: 100_000, // MT5 standard for FX; the app treats lot_size as multiplier
-    entry_at: t.entryAt,
-    exit_at: t.exitAt,
-    stop_loss: t.stopLoss,
-    take_profit: t.takeProfit,
-    fees: t.fees,
-    status: "closed" as const,
-    pnl: t.pnl,
-    pnl_percent:
-      t.entryPrice > 0
+  const rows = trades.map((t) => {
+    // Best-effort initial_risk: if the trader recorded a stop, back out what
+    // they were willing to lose on this position. Rough (doesn't factor
+    // quote-currency conversion), but analytics degrades gracefully.
+    const contractSize = 100_000;
+    const initialRisk =
+      t.stopLoss != null && t.entryPrice > 0
         ? round(
-            t.direction === "long"
-              ? ((t.exitPrice - t.entryPrice) / t.entryPrice) * 100
-              : ((t.entryPrice - t.exitPrice) / t.entryPrice) * 100,
+            Math.abs(t.entryPrice - t.stopLoss) * t.volume * contractSize,
           )
-        : null,
-    strategy: null,
-    notes_entry: t.comment,
-    notes_exit: null,
-    mistakes: null,
-  }));
+        : null;
+    return {
+      user_id: user.id,
+      account_id: accountId,
+      external_id: t.externalId,
+      source: "mt5_import" as const,
+      symbol: t.symbol,
+      market: t.market,
+      direction: t.direction,
+      entry_price: t.entryPrice,
+      exit_price: t.exitPrice,
+      quantity: t.volume,
+      lot_size: contractSize,
+      entry_at: t.entryAt,
+      exit_at: t.exitAt,
+      stop_loss: t.stopLoss,
+      take_profit: t.takeProfit,
+      // Mirror the SL/TP into the planned columns so R-based analytics work
+      // even for imported trades without an explicit pre-trade plan.
+      planned_entry: t.entryPrice,
+      planned_stop: t.stopLoss,
+      planned_target: t.takeProfit,
+      initial_risk: initialRisk,
+      fees: t.fees,
+      status: "closed" as const,
+      pnl: t.pnl,
+      pnl_percent:
+        t.entryPrice > 0
+          ? round(
+              t.direction === "long"
+                ? ((t.exitPrice - t.entryPrice) / t.entryPrice) * 100
+                : ((t.entryPrice - t.exitPrice) / t.entryPrice) * 100,
+            )
+          : null,
+      strategy: null,
+      notes_entry: t.comment,
+      notes_exit: null,
+      mistakes: null,
+    };
+  });
 
   const { error } = await supabase
     .from("trades")

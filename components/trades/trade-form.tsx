@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { Loader2, Save, Trash2, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  Loader2,
+  Save,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  Target,
+  ListChecks,
+} from "lucide-react";
 
 import {
   Form,
@@ -30,6 +38,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -49,13 +58,52 @@ import { formatSigned, formatPercent } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { ImageUploader, type PendingImage } from "./image-uploader";
 import { SymbolPicker } from "./symbol-picker";
+import { PositionSizeCalculator } from "./position-size-calculator";
 import {
   defaultContractSize,
   findSymbol,
   sizeFieldLabel,
 } from "@/lib/symbols";
 import type { TradeWithRelations } from "@/lib/trades";
-import type { Market, TradingAccountRow } from "@/types/database";
+import type {
+  Emotion,
+  ExecutionGrade,
+  Market,
+  MistakeCode,
+  PlaybookRow,
+  TradingAccountRow,
+} from "@/types/database";
+import { MISTAKE_CODES } from "@/types/database";
+
+const MISTAKE_LABELS: Record<MistakeCode, string> = {
+  chased_entry: "Chased entry",
+  moved_stop: "Moved stop",
+  oversized: "Oversized",
+  no_stop: "No stop loss",
+  revenge_trade: "Revenge trade",
+  no_plan: "No plan",
+  ignored_news: "Ignored news",
+  fomo_entry: "FOMO entry",
+  early_exit: "Exited early",
+  held_loser: "Held a loser",
+  against_trend: "Against trend",
+  overtraded: "Overtraded",
+};
+
+const EMOTIONS: { value: Emotion; label: string; tone: "profit" | "loss" | "muted" }[] = [
+  { value: "calm", label: "Calm", tone: "profit" },
+  { value: "focused", label: "Focused", tone: "profit" },
+  { value: "confident", label: "Confident", tone: "profit" },
+  { value: "anxious", label: "Anxious", tone: "loss" },
+  { value: "fearful", label: "Fearful", tone: "loss" },
+  { value: "greedy", label: "Greedy", tone: "loss" },
+  { value: "fomo", label: "FOMO", tone: "loss" },
+  { value: "revenge", label: "Revenge", tone: "loss" },
+  { value: "bored", label: "Bored", tone: "muted" },
+  { value: "tired", label: "Tired", tone: "muted" },
+  { value: "euphoric", label: "Euphoric", tone: "loss" },
+  { value: "frustrated", label: "Frustrated", tone: "loss" },
+];
 
 const MARKETS: { value: Market | "all"; label: string }[] = [
   { value: "all", label: "All markets" },
@@ -86,11 +134,13 @@ export function TradeForm({
   initial,
   accounts,
   defaultAccountId,
+  playbooks = [],
 }: {
   userId: string;
   initial?: TradeWithRelations | null;
   accounts: TradingAccountRow[];
   defaultAccountId: string;
+  playbooks?: PlaybookRow[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -109,6 +159,8 @@ export function TradeForm({
             defaultAccountId ??
             accounts[0]?.id ??
             "",
+          playbook_id: initial.playbook_id ?? null,
+          status: initial.status,
           direction: initial.direction,
           entry_price: initial.entry_price,
           exit_price: initial.exit_price ?? undefined,
@@ -119,6 +171,16 @@ export function TradeForm({
           fees: initial.fees ?? 0,
           stop_loss: initial.stop_loss ?? undefined,
           take_profit: initial.take_profit ?? undefined,
+          planned_entry: initial.planned_entry ?? undefined,
+          planned_stop: initial.planned_stop ?? undefined,
+          planned_target: initial.planned_target ?? undefined,
+          thesis: initial.thesis ?? "",
+          initial_risk: initial.initial_risk ?? undefined,
+          checklist_completed: initial.checklist_completed ?? [],
+          execution_grade: initial.execution_grade ?? null,
+          emotion_pre: initial.emotion_pre ?? null,
+          emotion_post: initial.emotion_post ?? null,
+          mistake_codes: initial.trade_mistakes?.map((m) => m.code) ?? [],
           strategy: initial.strategy ?? "",
           notes_entry: initial.notes_entry ?? "",
           notes_exit: initial.notes_exit ?? "",
@@ -129,6 +191,8 @@ export function TradeForm({
           symbol: "",
           market: "forex",
           account_id: defaultAccountId ?? accounts[0]?.id ?? "",
+          playbook_id: null,
+          status: "open",
           direction: "long",
           entry_price: 0,
           exit_price: undefined,
@@ -139,6 +203,16 @@ export function TradeForm({
           fees: 0,
           stop_loss: undefined,
           take_profit: undefined,
+          planned_entry: undefined,
+          planned_stop: undefined,
+          planned_target: undefined,
+          thesis: "",
+          initial_risk: undefined,
+          checklist_completed: [],
+          execution_grade: null,
+          emotion_pre: null,
+          emotion_post: null,
+          mistake_codes: [],
           strategy: "",
           notes_entry: "",
           notes_exit: "",
@@ -217,6 +291,32 @@ export function TradeForm({
     entry > 0 && exit > 0 ? pnlPercent(entry, exit, direction) : null;
 
   const tags = form.watch("tags") ?? [];
+  const status = form.watch("status");
+  const selectedPlaybookId = form.watch("playbook_id");
+  const selectedPlaybook = useMemo(
+    () => playbooks.find((p) => p.id === selectedPlaybookId) ?? null,
+    [playbooks, selectedPlaybookId],
+  );
+  const checklistCompleted = form.watch("checklist_completed") ?? [];
+  const selectedAccount = accounts.find(
+    (a) => a.id === form.watch("account_id"),
+  );
+  const sl = Number(form.watch("stop_loss")) || 0;
+  const pe = Number(form.watch("planned_entry")) || 0;
+  const ps = Number(form.watch("planned_stop")) || 0;
+  const pt = Number(form.watch("planned_target")) || 0;
+  const plannedRR =
+    ps > 0 && pe > 0 && pt > 0 && Math.abs(pe - ps) > 0
+      ? Math.abs(pt - pe) / Math.abs(pe - ps)
+      : null;
+
+  function toggleChecklistItem(id: string) {
+    const cur = checklistCompleted;
+    const next = cur.includes(id)
+      ? cur.filter((x) => x !== id)
+      : [...cur, id];
+    form.setValue("checklist_completed", next, { shouldDirty: true });
+  }
 
   function addTag() {
     const trimmed = tagInput.trim();
@@ -244,7 +344,10 @@ export function TradeForm({
       const market: Market = values.market;
 
       const supabase = createClient();
-      const isClosed = !!values.exit_price && !!values.exit_at;
+      // Status is user-chosen (planned/open/closed) — we only compute pnl
+      // when the trade is explicitly closed with an exit price + time.
+      const isClosed =
+        values.status === "closed" && !!values.exit_price && !!values.exit_at;
       const pnl = isClosed
         ? computePnl(
             values.entry_price,
@@ -264,6 +367,7 @@ export function TradeForm({
       const payload = {
         user_id: userId,
         account_id: values.account_id,
+        playbook_id: values.playbook_id || null,
         symbol: values.symbol,
         market,
         direction: values.direction,
@@ -275,12 +379,21 @@ export function TradeForm({
           : null,
         entry_at: dateStringToIso(values.entry_at),
         exit_at: values.exit_at ? dateStringToIso(values.exit_at) : null,
-        status: (isClosed ? "closed" : "open") as "open" | "closed",
+        status: values.status,
         pnl,
         pnl_percent: pnl_pct,
         fees: values.fees,
         stop_loss: values.stop_loss ?? null,
         take_profit: values.take_profit ?? null,
+        planned_entry: values.planned_entry ?? null,
+        planned_stop: values.planned_stop ?? null,
+        planned_target: values.planned_target ?? null,
+        thesis: values.thesis || null,
+        initial_risk: values.initial_risk ?? null,
+        checklist_completed: values.checklist_completed ?? [],
+        execution_grade: values.execution_grade ?? null,
+        emotion_pre: values.emotion_pre ?? null,
+        emotion_post: values.emotion_post ?? null,
         strategy: values.strategy || null,
         notes_entry: values.notes_entry || null,
         notes_exit: values.notes_exit || null,
@@ -321,6 +434,19 @@ export function TradeForm({
           values.tags.map((tag) => ({ trade_id: tradeId!, tag })),
         );
         if (tagsErr) toast.warning(`Tags: ${tagsErr.message}`);
+      }
+
+      // Sync mistake taxonomy — same pattern.
+      await supabase.from("trade_mistakes").delete().eq("trade_id", tradeId);
+      const mistakes = values.mistake_codes ?? [];
+      if (mistakes.length) {
+        const { error: mistakesErr } = await supabase
+          .from("trade_mistakes")
+          .insert(
+            mistakes.map((code) => ({ trade_id: tradeId!, code })),
+          );
+        if (mistakesErr)
+          toast.warning(`Mistake tags: ${mistakesErr.message}`);
       }
 
       // Upload any pending images
@@ -469,6 +595,78 @@ export function TradeForm({
             />
             <FormField
               control={form.control}
+              name="playbook_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Playbook / setup</FormLabel>
+                  <Select
+                    onValueChange={(v) =>
+                      field.onChange(v === "__none__" ? null : v)
+                    }
+                    value={field.value ?? "__none__"}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pick a setup..." />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="__none__">
+                        <span className="text-muted-foreground">
+                          No playbook
+                        </span>
+                      </SelectItem>
+                      {playbooks
+                        .filter((p) => !p.is_archived)
+                        .map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            <span className="flex items-center gap-2">
+                              <span
+                                className="inline-block size-2.5 rounded-sm"
+                                style={{ background: p.color ?? "var(--primary)" }}
+                              />
+                              <span className="font-medium">{p.name}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Group by setup so analytics can tell you which one works.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Status</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="planned">
+                        Planned — not entered yet
+                      </SelectItem>
+                      <SelectItem value="open">Open</SelectItem>
+                      <SelectItem value="closed">Closed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
               name="direction"
               render={({ field }) => (
                 <FormItem className="md:col-span-2">
@@ -497,6 +695,209 @@ export function TradeForm({
                       <TrendingDown className="size-4" /> Short
                     </button>
                   </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="size-4 text-primary" /> Plan & risk
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <FormField
+              control={form.control}
+              name="thesis"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Thesis</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={3}
+                      placeholder="Why this trade? What's the setup and the invalidation? Write this *before* entering."
+                      {...field}
+                      value={field.value ?? ""}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Writing the plan before entry beats journaling after.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="grid gap-4 md:grid-cols-3">
+              <FormField
+                control={form.control}
+                name="planned_entry"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Planned entry</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value === "" ? null : Number(e.target.value),
+                          )
+                        }
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="planned_stop"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Planned stop</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value === "" ? null : Number(e.target.value),
+                          )
+                        }
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="planned_target"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Planned target</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="any"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value === "" ? null : Number(e.target.value),
+                          )
+                        }
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {plannedRR !== null && (
+              <div className="flex items-center gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs">
+                <span className="text-muted-foreground">Planned R:R</span>
+                <span className="num font-semibold text-foreground">
+                  {plannedRR.toFixed(2)}
+                </span>
+                {selectedPlaybook?.target_r_multiple && (
+                  <span className="text-muted-foreground">
+                    · target {selectedPlaybook.target_r_multiple}R
+                  </span>
+                )}
+              </div>
+            )}
+
+            <FormField
+              control={form.control}
+              name="initial_risk"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Initial risk ({selectedAccount?.currency ?? "USD"})
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 100"
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value === "" ? null : Number(e.target.value),
+                        )
+                      }
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Dollars at risk on this trade. Powers R-multiples and
+                    expectancy — without this, you can&apos;t measure edge.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <PositionSizeCalculator
+              defaultBalance={selectedAccount?.starting_balance ?? 10000}
+              currency={selectedAccount?.currency ?? "USD"}
+              suggestedEntry={pe || entry || null}
+              suggestedStop={ps || sl || null}
+              suggestedContractSize={effectiveContractSize}
+              onApply={({ units, riskAmount }) => {
+                form.setValue("quantity", Number(units.toFixed(4)), {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+                form.setValue("initial_risk", Number(riskAmount.toFixed(2)), {
+                  shouldDirty: true,
+                });
+              }}
+            />
+
+            {selectedPlaybook && selectedPlaybook.checklist.length > 0 && (
+              <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/10 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <ListChecks className="size-4 text-primary" />
+                  Rule checklist ({checklistCompleted.length}/
+                  {selectedPlaybook.checklist.length})
+                </div>
+                <div className="grid gap-1.5">
+                  {selectedPlaybook.checklist.map((item) => (
+                    <label
+                      key={item.id}
+                      className="flex cursor-pointer items-start gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-accent/40"
+                    >
+                      <Checkbox
+                        checked={checklistCompleted.includes(item.id)}
+                        onCheckedChange={() => toggleChecklistItem(item.id)}
+                        className="mt-0.5"
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <FormField
+              control={form.control}
+              name="emotion_pre"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Emotion at entry</FormLabel>
+                  <EmotionPicker
+                    value={field.value ?? null}
+                    onChange={field.onChange}
+                  />
+                  <FormDescription>
+                    How you felt right before pulling the trigger.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -882,10 +1283,69 @@ export function TradeForm({
             />
             <FormField
               control={form.control}
+              name="emotion_post"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Emotion at exit</FormLabel>
+                  <EmotionPicker
+                    value={field.value ?? null}
+                    onChange={field.onChange}
+                  />
+                  <FormDescription>
+                    Reveals how P&L outcomes are affecting your psychology.
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="mistake_codes"
+              render={({ field }) => {
+                const selected = field.value ?? [];
+                function toggle(code: MistakeCode) {
+                  if (selected.includes(code)) {
+                    field.onChange(selected.filter((c) => c !== code));
+                  } else {
+                    field.onChange([...selected, code]);
+                  }
+                }
+                return (
+                  <FormItem>
+                    <FormLabel>Mistake tags</FormLabel>
+                    <div className="flex flex-wrap gap-1.5">
+                      {MISTAKE_CODES.map((code) => {
+                        const on = selected.includes(code);
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            onClick={() => toggle(code)}
+                            className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+                              on
+                                ? "border-loss/50 bg-loss/10 text-loss"
+                                : "border-border/60 text-muted-foreground hover:border-border"
+                            }`}
+                          >
+                            {MISTAKE_LABELS[code]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <FormDescription>
+                      Tag recurring mistakes so analytics can count them.
+                    </FormDescription>
+                  </FormItem>
+                );
+              }}
+            />
+
+            <FormField
+              control={form.control}
               name="mistakes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Mistakes / lessons</FormLabel>
+                  <FormLabel>Mistakes / lessons (freeform)</FormLabel>
                   <FormControl>
                     <Textarea
                       rows={3}
@@ -894,6 +1354,46 @@ export function TradeForm({
                       value={field.value ?? ""}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="execution_grade"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Execution grade</FormLabel>
+                  <div className="flex flex-wrap gap-2">
+                    {(["A", "B", "C", "D", "F"] as ExecutionGrade[]).map((g) => {
+                      const active = field.value === g;
+                      const tone =
+                        g === "A" || g === "B"
+                          ? "border-profit/60 bg-profit/10 text-profit"
+                          : g === "F"
+                            ? "border-loss/60 bg-loss/10 text-loss"
+                            : "border-border/60 bg-muted/30 text-muted-foreground";
+                      return (
+                        <button
+                          key={g}
+                          type="button"
+                          onClick={() => field.onChange(active ? null : g)}
+                          className={`grid size-10 place-items-center rounded-lg border font-mono text-sm font-semibold transition-all ${
+                            active
+                              ? tone
+                              : "border-border/60 text-muted-foreground hover:border-border"
+                          }`}
+                        >
+                          {g}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <FormDescription>
+                    Grade how well you followed the plan — independent of P&L.
+                    A losing A-grade trade is fine.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -977,5 +1477,38 @@ export function TradeForm({
         </DialogContent>
       </Dialog>
     </Form>
+  );
+}
+
+function EmotionPicker({
+  value,
+  onChange,
+}: {
+  value: Emotion | null;
+  onChange: (v: Emotion | null) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {EMOTIONS.map((e) => {
+        const active = value === e.value;
+        const tone = active
+          ? e.tone === "profit"
+            ? "border-profit/60 bg-profit/10 text-profit"
+            : e.tone === "loss"
+              ? "border-loss/60 bg-loss/10 text-loss"
+              : "border-primary/50 bg-primary/10 text-primary"
+          : "border-border/60 text-muted-foreground hover:border-border";
+        return (
+          <button
+            key={e.value}
+            type="button"
+            onClick={() => onChange(active ? null : e.value)}
+            className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${tone}`}
+          >
+            {e.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

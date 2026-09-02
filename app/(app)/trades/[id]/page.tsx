@@ -5,9 +5,15 @@ import {
   Edit,
   TrendingDown,
   TrendingUp,
+  Target,
+  ListChecks,
+  Check,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTrade, signedImageUrl } from "@/lib/trades";
+import { fetchPlaybook } from "@/lib/playbooks";
+import { rMultiple } from "@/lib/analytics";
 import { formatSigned, formatPercent, formatTradeDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -32,19 +38,34 @@ export default async function TradePage({
   const trade = await fetchTrade(supabase, user.id, id);
   if (!trade) notFound();
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("default_currency")
-    .eq("id", user.id)
-    .maybeSingle();
+  const [{ data: profile }, playbook, imagesWithUrl] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("default_currency")
+      .eq("id", user.id)
+      .maybeSingle(),
+    trade.playbook_id
+      ? fetchPlaybook(supabase, user.id, trade.playbook_id)
+      : Promise.resolve(null),
+    Promise.all(
+      trade.trade_images.map(async (img) => ({
+        ...img,
+        url: await signedImageUrl(supabase, img.storage_path),
+      })),
+    ),
+  ]);
   const currency = profile?.default_currency ?? "USD";
-
-  const imagesWithUrl = await Promise.all(
-    trade.trade_images.map(async (img) => ({
-      ...img,
-      url: await signedImageUrl(supabase, img.storage_path),
-    })),
-  );
+  const r = rMultiple(trade);
+  const checklistDone = trade.checklist_completed ?? [];
+  const checklistTotal = playbook?.checklist.length ?? 0;
+  const plannedRR =
+    trade.planned_entry &&
+    trade.planned_stop &&
+    trade.planned_target &&
+    Math.abs(trade.planned_entry - trade.planned_stop) > 0
+      ? Math.abs(trade.planned_target - trade.planned_entry) /
+        Math.abs(trade.planned_entry - trade.planned_stop)
+      : null;
 
   return (
     <div className="grid gap-6">
@@ -134,6 +155,152 @@ export default async function TradePage({
         </SummaryCard>
       </div>
 
+      {(r !== null ||
+        trade.thesis ||
+        trade.planned_entry ||
+        playbook ||
+        trade.execution_grade) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="size-4 text-primary" /> Plan & execution
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-5">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <MiniStat
+                label="R multiple"
+                value={
+                  r === null
+                    ? "—"
+                    : `${r > 0 ? "+" : ""}${r.toFixed(2)}R`
+                }
+                tone={
+                  r === null || r === 0
+                    ? "muted"
+                    : r > 0
+                      ? "profit"
+                      : "loss"
+                }
+              />
+              <MiniStat
+                label="Initial risk"
+                value={
+                  trade.initial_risk
+                    ? formatSigned(-trade.initial_risk, currency)
+                    : "—"
+                }
+                tone="muted"
+              />
+              <MiniStat
+                label="Planned R:R"
+                value={plannedRR ? plannedRR.toFixed(2) : "—"}
+                tone="muted"
+              />
+              <MiniStat
+                label="Grade"
+                value={trade.execution_grade ?? "—"}
+                tone={
+                  trade.execution_grade === "A" ||
+                  trade.execution_grade === "B"
+                    ? "profit"
+                    : trade.execution_grade === "F"
+                      ? "loss"
+                      : "muted"
+                }
+              />
+            </div>
+
+            {playbook && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Playbook:</span>
+                <span
+                  className="inline-block size-2.5 rounded-sm"
+                  style={{ background: playbook.color ?? "var(--primary)" }}
+                />
+                <span className="font-medium">{playbook.name}</span>
+                {playbook.target_r_multiple && (
+                  <span className="text-xs text-muted-foreground">
+                    · target {playbook.target_r_multiple}R
+                  </span>
+                )}
+              </div>
+            )}
+
+            {trade.thesis && (
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  Thesis
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-sm">
+                  {trade.thesis}
+                </p>
+              </div>
+            )}
+
+            {(trade.planned_entry ||
+              trade.planned_stop ||
+              trade.planned_target) && (
+              <div>
+                <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  Plan vs actual
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <PlanRow
+                    label="Entry"
+                    planned={trade.planned_entry}
+                    actual={trade.entry_price}
+                  />
+                  <PlanRow
+                    label="Stop"
+                    planned={trade.planned_stop}
+                    actual={trade.stop_loss}
+                  />
+                  <PlanRow
+                    label="Target"
+                    planned={trade.planned_target}
+                    actual={trade.exit_price}
+                  />
+                </div>
+              </div>
+            )}
+
+            {playbook && checklistTotal > 0 && (
+              <div>
+                <div className="mb-2 flex items-center gap-2">
+                  <ListChecks className="size-4 text-primary" />
+                  <span className="text-sm font-medium">
+                    Rule adherence — {checklistDone.length}/{checklistTotal}
+                  </span>
+                </div>
+                <div className="grid gap-1">
+                  {playbook.checklist.map((item) => {
+                    const done = checklistDone.includes(item.id);
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm ${
+                          done
+                            ? "border-profit/30 bg-profit/5"
+                            : "border-loss/30 bg-loss/5 text-muted-foreground line-through"
+                        }`}
+                      >
+                        {done ? (
+                          <Check className="size-3.5 text-profit" />
+                        ) : (
+                          <X className="size-3.5 text-loss" />
+                        )}
+                        <span>{item.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -213,5 +380,62 @@ function SummaryCard({
         <div>{children}</div>
       </CardContent>
     </Card>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  tone = "muted",
+}: {
+  label: string;
+  value: string;
+  tone?: "profit" | "loss" | "muted";
+}) {
+  const cls =
+    tone === "profit"
+      ? "text-profit"
+      : tone === "loss"
+        ? "text-loss"
+        : "text-foreground";
+  return (
+    <div>
+      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </div>
+      <div className={`num mt-1 text-lg font-semibold tracking-tight ${cls}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function PlanRow({
+  label,
+  planned,
+  actual,
+}: {
+  label: string;
+  planned: number | null;
+  actual: number | null;
+}) {
+  const diff =
+    planned !== null && actual !== null ? actual - planned : null;
+  return (
+    <div className="rounded-md border border-border/60 bg-muted/20 p-2">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 flex items-baseline gap-2 text-sm">
+        <span className="num text-muted-foreground">
+          plan {planned ?? "—"}
+        </span>
+        <span className="num font-semibold">→ {actual ?? "—"}</span>
+      </div>
+      {diff !== null && diff !== 0 && (
+        <div className="mt-0.5 text-[11px] text-muted-foreground">
+          {diff > 0 ? "+" : ""}
+          {diff.toFixed(5)} slip
+        </div>
+      )}
+    </div>
   );
 }

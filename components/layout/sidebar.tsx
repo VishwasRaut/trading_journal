@@ -11,12 +11,16 @@ import {
   Settings,
   Wallet,
   Upload,
+  BookOpen,
+  NotebookPen,
 } from "lucide-react";
 import type { AppUser } from "./app-shell";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/trades", label: "Trades", icon: ListChecks },
+  { href: "/playbooks", label: "Playbooks", icon: BookOpen },
+  { href: "/journal", label: "Journal", icon: NotebookPen },
   { href: "/analytics", label: "Analytics", icon: LineChart },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/accounts", label: "Accounts", icon: Wallet },
