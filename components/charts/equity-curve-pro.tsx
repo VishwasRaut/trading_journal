@@ -13,9 +13,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { format, parseISO, subDays, startOfYear } from "date-fns";
+import { subDays, startOfYear } from "date-fns";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatSigned, formatPercent } from "@/lib/format";
+import { formatCurrency, formatSigned, formatPercent, formatTradeDate, formatTradeDateShort } from "@/lib/format";
 import type { EquityPoint } from "@/lib/analytics";
 
 type Range = "1W" | "1M" | "3M" | "6M" | "YTD" | "ALL";
@@ -188,7 +188,7 @@ export function EquityCurvePro({
                 dataKey="ts"
                 type="number"
                 domain={["dataMin", "dataMax"]}
-                tickFormatter={(t) => format(new Date(t), "MMM d")}
+                tickFormatter={(t) => formatTradeDateShort(String(t))}
                 stroke="var(--muted-foreground)"
                 strokeOpacity={0.4}
                 fontSize={11}
@@ -225,7 +225,7 @@ export function EquityCurvePro({
                   return (
                     <div className="min-w-[200px] rounded-xl border border-border/60 bg-popover/95 p-3 text-xs shadow-2xl shadow-black/25 backdrop-blur-lg ring-1 ring-foreground/5">
                       <div className="mb-2 flex items-center justify-between text-muted-foreground">
-                        <span>{format(parseISO(p.date), "EEE, MMM d yyyy")}</span>
+                        <span>{formatTradeDate(p.date)}</span>
                         <span className="font-medium text-foreground">
                           {p.symbol}
                         </span>

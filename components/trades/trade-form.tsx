@@ -70,15 +70,15 @@ const marketsWithContractSize: Market[] = ["forex", "futures", "options"];
 
 function toDateInputValue(iso?: string | null) {
   if (!iso) return "";
-  const d = new Date(iso);
-  const tz = d.getTimezoneOffset() * 60_000;
-  return new Date(d.getTime() - tz).toISOString().slice(0, 10);
+  // The stored value is UTC — slice the date portion off the ISO string
+  // so the picker shows the same day everywhere regardless of user timezone.
+  return iso.slice(0, 10);
 }
 
 function dateStringToIso(value: string) {
-  // Parse `YYYY-MM-DD` as local midnight so the day matches what the user picked,
-  // regardless of timezone (a plain `new Date("YYYY-MM-DD")` would parse as UTC).
-  return new Date(`${value}T00:00:00`).toISOString();
+  // Store `YYYY-MM-DD` as UTC midnight. This way the exact same day is shown
+  // regardless of server/client timezone, and no offset math is needed.
+  return `${value}T00:00:00.000Z`;
 }
 
 export function TradeForm({

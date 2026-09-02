@@ -44,7 +44,10 @@ export function CalendarView({
   const byDay = useMemo(() => {
     const map = new Map<string, DayEntry>();
     for (const t of closedTrades(trades)) {
-      const key = format(parseISO(t.exit_at ?? t.entry_at), "yyyy-MM-dd");
+      // Date is stored as UTC midnight — slice off the date portion so all
+      // viewers (any timezone) bucket the trade into the same calendar cell.
+      const iso = t.exit_at ?? t.entry_at;
+      const key = iso.slice(0, 10);
       const cur = map.get(key) ?? { pnl: 0, trades: [] };
       cur.pnl = round(cur.pnl + (t.pnl ?? 0));
       cur.trades.push(t);

@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { format, parseISO } from "date-fns";
 import { ArrowUpRight, ArrowDownRight, Flame, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +38,7 @@ import {
   dayOfWeekPnl,
   symbolPerformance,
 } from "@/lib/analytics";
-import { formatSigned, formatPercent } from "@/lib/format";
+import { formatSigned, formatPercent, formatTradeDate } from "@/lib/format";
 import type { TradeWithRelations } from "@/lib/trades";
 
 export function AnalyticsView({
@@ -414,7 +413,7 @@ function BestWorstCard({
                 )}
               </div>
               <div className="text-xs text-muted-foreground">
-                {format(parseISO(trade.entry_at), "MMM d, yyyy")} · {trade.direction}
+                {formatTradeDate(trade.entry_at)} · {trade.direction}
               </div>
             </Link>
           )}

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { format, parseISO } from "date-fns";
 import { motion } from "framer-motion";
 import { Search, TrendingDown, TrendingUp } from "lucide-react";
 import {
@@ -23,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { formatSigned } from "@/lib/format";
+import { formatSigned, formatTradeDate } from "@/lib/format";
 import type { TradeWithRelations } from "@/lib/trades";
 import type { Market } from "@/types/database";
 
@@ -180,7 +179,7 @@ export function TradesTable({
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
-                    {format(parseISO(t.entry_at), "MMM d, yyyy")}
+                    {formatTradeDate(t.entry_at)}
                   </TableCell>
                 </motion.tr>
               ))}

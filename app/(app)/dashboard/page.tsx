@@ -19,7 +19,7 @@ import {
   groupTradesByMonth,
   closedTrades,
 } from "@/lib/analytics";
-import { formatSigned, formatPercent } from "@/lib/format";
+import { formatSigned, formatPercent, formatTradeDate } from "@/lib/format";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { TraderQuotes } from "@/components/dashboard/trader-quotes";
 import { EquityCurvePro } from "@/components/charts/equity-curve-pro";
@@ -28,7 +28,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { format, parseISO } from "date-fns";
 
 export const metadata = { title: "Dashboard — Ledger" };
 
@@ -171,8 +170,7 @@ export default async function DashboardPage() {
                     <div>
                       <div className="font-medium">{t.symbol}</div>
                       <div className="text-xs text-muted-foreground">
-                        {format(parseISO(t.entry_at), "MMM d, yyyy")} ·{" "}
-                        {t.direction}
+                        {formatTradeDate(t.entry_at)} · {t.direction}
                       </div>
                     </div>
                   </div>

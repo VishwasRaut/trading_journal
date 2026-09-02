@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { format, parseISO } from "date-fns";
 import {
   ArrowLeft,
   Edit,
@@ -9,7 +8,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { fetchTrade, signedImageUrl } from "@/lib/trades";
-import { formatSigned, formatPercent } from "@/lib/format";
+import { formatSigned, formatPercent, formatTradeDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -114,7 +113,7 @@ export default async function TradePage({
             {trade.entry_price}
           </div>
           <div className="text-xs text-muted-foreground">
-            {format(parseISO(trade.entry_at), "MMM d, yyyy · HH:mm")}
+            {formatTradeDate(trade.entry_at)}
           </div>
         </SummaryCard>
         <SummaryCard label="Exit">
@@ -122,9 +121,7 @@ export default async function TradePage({
             {trade.exit_price ?? "—"}
           </div>
           <div className="text-xs text-muted-foreground">
-            {trade.exit_at
-              ? format(parseISO(trade.exit_at), "MMM d, yyyy · HH:mm")
-              : "Still open"}
+            {trade.exit_at ? formatTradeDate(trade.exit_at) : "Still open"}
           </div>
         </SummaryCard>
         <SummaryCard label="Size">

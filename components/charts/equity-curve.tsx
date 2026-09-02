@@ -9,8 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { format, parseISO } from "date-fns";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatTradeDate, formatTradeDateShort } from "@/lib/format";
 
 export function EquityCurve({
   data,
@@ -43,7 +42,7 @@ export function EquityCurve({
           />
           <XAxis
             dataKey="date"
-            tickFormatter={(d) => format(parseISO(d), "MMM d")}
+            tickFormatter={(d) => formatTradeDateShort(d)}
             stroke="var(--muted-foreground)"
             fontSize={11}
           />
@@ -61,7 +60,7 @@ export function EquityCurve({
               return (
                 <div className="rounded-lg border border-border/60 bg-popover/95 p-2 text-xs shadow-lg backdrop-blur">
                   <div className="text-muted-foreground">
-                    {format(parseISO(label as string), "MMM d, yyyy")}
+                    {formatTradeDate(label as string)}
                   </div>
                   <div className="font-medium">
                     Equity: {formatCurrency(v, currency)}

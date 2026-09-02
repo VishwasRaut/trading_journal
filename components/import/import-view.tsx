@@ -34,8 +34,7 @@ import {
 } from "@/components/ui/table";
 import { parseMT5Statement, type ParsedTrade } from "@/lib/mt5-parser";
 import { importTrades } from "@/app/(app)/actions/import";
-import { formatSigned } from "@/lib/format";
-import { format, parseISO } from "date-fns";
+import { formatSigned, formatTradeDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TradingAccountRow } from "@/types/database";
 
@@ -281,7 +280,7 @@ export function ImportView({
                         {t.exitPrice}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {format(parseISO(t.entryAt), "MMM d, yyyy HH:mm")}
+                        {formatTradeDate(t.entryAt)}
                       </TableCell>
                       <TableCell
                         className={cn(
