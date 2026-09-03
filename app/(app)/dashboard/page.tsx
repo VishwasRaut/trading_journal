@@ -21,7 +21,6 @@ import {
   groupTradesByMonth,
   closedTrades,
   profitFactor,
-  expectancyR,
   sharpeRatio,
   currentStreak,
   todaysPnl,
@@ -29,6 +28,10 @@ import {
 } from "@/lib/analytics";
 import { formatSigned, formatPercent, formatTradeDate } from "@/lib/format";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import {
+  DailyPnlCard,
+  type DailyPnlMap,
+} from "@/components/dashboard/daily-pnl-card";
 import { TraderQuotes } from "@/components/dashboard/trader-quotes";
 import { EquityCurvePro } from "@/components/charts/equity-curve-pro";
 import { PageHeader } from "@/components/layout/page-header";
@@ -66,12 +69,23 @@ export default async function DashboardPage() {
   const win = winRate(trades);
   const rr = avgRiskReward(trades);
   const pf = profitFactor(trades);
-  const expR = expectancyR(trades);
   const sharpe = sharpeRatio(trades);
   const streak = currentStreak(trades);
   const monthly = groupTradesByMonth(trades);
   const thisMonth = monthly.at(-1);
   const today = todaysPnl(trades);
+  // Pre-computed per-day P&L map so the daily card can jump between dates
+  // without re-scanning trades on the client on every prev/next click.
+  const dailyMap: DailyPnlMap = {};
+  for (const t of closed) {
+    const key = (t.exit_at ?? t.entry_at).slice(0, 10);
+    const cur = dailyMap[key] ?? { pnl: 0, count: 0, wins: 0, losses: 0 };
+    cur.pnl = Math.round((cur.pnl + (t.pnl ?? 0)) * 100) / 100;
+    cur.count += 1;
+    if ((t.pnl ?? 0) > 0) cur.wins += 1;
+    else if ((t.pnl ?? 0) < 0) cur.losses += 1;
+    dailyMap[key] = cur;
+  }
   const equity = equityCurveRich(trades, startingCapital);
 
   const propStatus = activeAccount
@@ -152,14 +166,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          label="Expectancy (R)"
-          value={expR}
-          format={{ kind: "number", digits: 2 }}
-          tone={expR > 0 ? "profit" : expR < 0 ? "loss" : "primary"}
-          icon={<Target className="size-5" />}
-          hint="per trade in R units"
-        />
+        <DailyPnlCard dailyMap={dailyMap} currency={currency} />
         <KpiCard
           label="Profit factor"
           value={pf === Infinity ? 99 : pf}
